@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Dropsonde Data Map</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.2);
+        }
+
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+
+        label {
+            font-weight: 500;
+            color: #333;
+            font-size: 14px;
+        }
+
+        input[type="date"] {
+            margin-right: 10px;
+        }
+
+        button {
+            padding: 4px 16px;
+            background-color: #4a90e2;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        button:hover {
+            background-color: #357abd;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        input[type="date"] {
+            padding: 4px 16px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            background-color: #f9f9f9;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            margin-right: 10px;
+        }
+
+        input[type="date"]:focus {
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+            outline: none;
+        }
+
+        .date-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .date-labels {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .date-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .apply-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            align-items: center; /* This vertically centers the button */
+            height: 100%;
+        }
+
+        #year-section, #tail-number-section {
+            margin-top: 5px;
+        }
+
+        #year-section input {
+            margin-right: 10px;
+            width: 80px;
+        }
+
+        #year-section button {
+            margin-left: 2px;
+            margin-right: 2px; /* or 2px, adjust to taste */
+            padding: 4px 16px;  /* smaller padding if needed */
+        }
+
+        #year-section button:last-child {
+            margin-right: 0;
+        }
+        #zoom-to-fit-section {
+            display: flex;
+            justify-content: center;
+            width: 100%; /* Full width of the parent */
+            margin-top: 10px; /* Adjust the space between the line and the button */
+        }
+        #zoom-to-fit, #export-map {
+            padding: 10px 20px; /* Optional: adjust padding */
+            margin: 0px 10px;
+            background-color: #4a90e2; /* Change the button color */
+            color: white; /* Text color */
+            border: none; /* Remove default border */
+            border-radius: 5px; /* Rounded corners */
+            cursor: pointer; /* Pointer on hover */
+            text-align: center;
+        }
+        #zoom-to-fit:hover, #export-map:hover {
+            background-color: #357abd; /* Darker blue on hover */
+        }
+        #tail-number-section {
+            display: flex;
+            justify-content: center;     /* Center checkboxes horizontally */
+            align-items: center;         /* Ensure vertical alignment */
+            margin: 0px 0;              /* Optional: space it away from other elements */
+        }
+
+        #tail-number-section label {
+            margin: 0 5px;  /* Space between each checkbox */
+        }
+        #operator-section {
+            display: flex;
+            align-items: center; /* Centers the operator section content */
+            width: 100%; /* Ensures it occupies full width */
+            justify-content: center;
+        }
+        #operator-section label {
+            margin-right: 10px; /* Adds some space between the label and dropdown */
+        }
+
+    </style>
+
+</head>
+<body>
+    <div id="controls">
+        <div class="date-controls">
+            <div class="date-labels">
+                <div class="date-row">
+                    <label for="start-date">Start Date:</label>
+                    <input type="date" id="start-date" />
+                </div>
+                <div class="date-row">
+                    <label for="end-date">End Date:</label>
+                    <input type="date" id="end-date" />
+                </div>
+            </div>
+            <div class="apply-container">
+                <button id="apply-dates">Apply</button>
+                <button id="reset-dates">Reset</button>
+            </div>
+        </div>
+        <div id="year-section">
+            <label for="year-input">Year:</label>
+            <input type="number" id="year-input" placeholder="Enter Year" />
+            <button id="cy-btn">CY</button>
+            <button id="fy-btn">FY</button>
+            <button id="hurricane-season-btn">HX</button>
+        </div>
+        <hr class="separator">
+        <!-- Tail Number Section -->
+        <div id="tail-number-section">
+            <label>
+                <input type="checkbox" id="tail-n42rf" checked />
+                N42RF
+            </label>
+            <label>
+                <input type="checkbox" id="tail-n43rf" checked />
+                N43RF
+            </label>
+            <label>
+                <input type="checkbox" id="tail-n49rf" checked />
+                N49RF
+            </label>
+            <label>
+                <input type="checkbox" id="tail-other" checked />
+                Other
+            </label>
+        </div>
+        <hr class="separator">
+        <!-- Operator Dropdown Section -->
+        <div id="operator-section">
+            <label for="operator-select">Operator:</label>
+            <select id="operator-select">
+                <option value="">All</option>
+                <!-- Options will be populated dynamically -->
+            </select>
+        </div>
+        <hr class="separator">
+        <div id="zoom-to-fit-section">
+            <!-- <button id="export-map">Export Map</button> --> 
+
+            <button id="zoom-to-fit">Zoom to Drops</button>
+        </div>
+        
+
+        
+
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-simple-map-screenshoter"></script>
+
+
+    <script>
+        const map = L.map('map', {
+            zoomControl: false
+        }).setView([27.988, -82.02], 3); // Approx center near Lakeland
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Add zoom control to top-right
+        L.control.zoom({
+            position: 'topright'
+        }).addTo(map);
+
+        L.simpleMapScreenshoter({
+            position: 'bottomleft'
+        }).addTo(map);
+
+        const startInput = document.getElementById('start-date');
+        const endInput = document.getElementById('end-date');
+        const applyBtn = document.getElementById('apply-dates');
+
+        // Set default date range
+        startInput.value = '1996-06-08';
+        endInput.value = new Date().toISOString().split('T')[0];
+
+        // Reset button functionality
+        document.getElementById('reset-dates').addEventListener('click', function () {
+            // Reset start and end date inputs to default values
+            startInput.value = '1996-06-08';
+            endInput.value = new Date().toISOString().split('T')[0];
+
+            // Call fetchAndDisplayDrops to reload the data with the reset dates
+            fetchAndDisplayDrops();
+        });
+
+        // Set the default year input value to the current year
+        const yearInput = document.getElementById('year-input');
+        yearInput.value = new Date().getFullYear();
+
+        let markersLayer = L.featureGroup().addTo(map);
+
+        // Get the checkboxes for tail numbers
+        const tailCheckboxes = {
+            'N42RF': document.getElementById('tail-n42rf'),
+            'N43RF': document.getElementById('tail-n43rf'),
+            'N49RF': document.getElementById('tail-n49rf'),
+            'Other': document.getElementById('tail-other')
+        };
+
+        // Function to check selected tails
+        function getSelectedTails() {
+            const selectedTails = [];
+            Object.keys(tailCheckboxes).forEach(tail => {
+                if (tailCheckboxes[tail].checked) {
+                    selectedTails.push(tail);
+                }
+            });
+            return selectedTails;
+        }
+
+        // Add operator list (replace with your actual operator list or fetch it from your data)
+        const operators = [
+            'Steven Paul',
+            'Rebecca Keller',
+            'Tom Brannigan'
+            // Add more operators as needed
+        ];
+
+        // Populate the dropdown with operators
+        const operatorSelect = document.getElementById('operator-select');
+        operators.forEach(operator => {
+            const option = document.createElement('option');
+            option.value = operator;
+            option.textContent = operator;
+            operatorSelect.appendChild(option);
+        });
+
+        // Function to get the selected operator
+        function getSelectedOperator() {
+            return operatorSelect.value;
+        }
+
+        // Modify the fetchAndDisplayDrops function to filter based on selected tails
+        function fetchAndDisplayDrops() {
+            const start = startInput.value;
+            const end = endInput.value;
+            const selectedTails = getSelectedTails(); // Get selected tails
+            const selectedOperator = getSelectedOperator(); // Get selected operator
+
+            fetch(`/api/drops?start=${start}&end=${end}&operator=${selectedOperator}`)
+                .then(res => res.json())
+                .then(data => {
+                    markersLayer.clearLayers();
+
+                    data.forEach(d => {
+                        let lat = d.lat;
+                        let lon = d.lon;
+
+                        if (lon > 110) lon -= 360;
+
+                        if (
+                            lat === 0 && lon === 0 ||
+                            isNaN(lat) || isNaN(lon)
+                        ) return;
+
+                        const tail = (d.tail || '').trim().toUpperCase();
+
+                        // Check if the tail number is in the selected list
+                        if (selectedTails.includes(tail) || selectedTails.includes('Other') && !['N42RF', 'N43RF', 'N49RF'].includes(tail)) {
+                            const color = tail === 'N42RF' ? '#3CB371'
+                                : tail === 'N43RF' ? '#FFC0CB'
+                                : tail === 'N49RF' ? '#1E90FF'
+                                : '#555';
+
+                            L.circleMarker([lat, lon], {
+                                radius: 3,
+                                color: color,
+                                fillColor: color,
+                                fillOpacity: 1,
+                                weight: 0
+                            })
+                            .bindPopup(`
+                                <b>Tail Number:</b> ${tail}<br>
+                                <b>Operator:</b> ${d.operator}<br>
+                                <b>Serial:</b> ${d.serial}<br>
+                                <b>Timestamp:</b> ${d.droptime}<br>
+                                <b>Latitude:</b> ${lat}<br>
+                                <b>Longitude:</b> ${lon}<br>
+                            `)
+                            .addTo(markersLayer);
+                        }
+                    });
+                    // After all markers are added, zoom to bounds
+                    if (markersLayer.getLayers().length > 0) {
+                        map.fitBounds(markersLayer.getBounds());
+                    }
+                })
+                .catch(err => console.error('Error loading dropsonde data:', err));
+        }
+
+        // Add event listeners to each checkbox to re-fetch data when they change
+        Object.values(tailCheckboxes).forEach(checkbox => {
+            checkbox.addEventListener('change', fetchAndDisplayDrops);
+        });
+
+        applyBtn.addEventListener('click', fetchAndDisplayDrops);
+
+        // Add event listener to operator dropdown to re-fetch data when the operator changes
+        operatorSelect.addEventListener('change', fetchAndDisplayDrops);
+
+        
+
+        // Initial load
+        fetchAndDisplayDrops();
+
+        // Zoom to Drops button functionality
+        document.getElementById('zoom-to-fit').addEventListener('click', function () {
+            const bounds = markersLayer.getBounds();
+            if (bounds.isValid()) {
+                map.fitBounds(bounds, { padding: [20, 20] });
+            } else {
+                alert("No drops to zoom to!");
+            }
+        });
+
+        // CY, FY, and Hurricane Season buttons functionality for year input
+        document.getElementById('cy-btn').addEventListener('click', function() {
+            console.log("Marker count:", markersLayer.getLayers().length);
+            const year = document.getElementById('year-input').value;
+            const start = `${year}-01-01`;
+            const end = `${year}-12-31`;
+            startInput.value = start;
+            endInput.value = end;
+            fetchAndDisplayDrops();
+        });
+
+        document.getElementById('fy-btn').addEventListener('click', function() {
+            const year = document.getElementById('year-input').value;
+            const start = `${year - 1}-10-01`;
+            const end = `${year}-09-30`;
+            startInput.value = start;
+            endInput.value = end;
+            fetchAndDisplayDrops();
+        });
+
+        document.getElementById('hurricane-season-btn').addEventListener('click', function() {
+            const year = document.getElementById('year-input').value;
+            const start = `${year}-06-01`;
+            const end = `${year}-11-30`;
+            startInput.value = start;
+            endInput.value = end;
+            fetchAndDisplayDrops();
+        });
+
+
+    </script>
+</body>
+</html>
