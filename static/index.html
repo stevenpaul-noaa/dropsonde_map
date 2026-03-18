@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>AOC Dropsonde Map</title>
+
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        #map {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+        }
+
+        /* ── Sidebar ─────────────────────────────────────────────────── */
+        #sidebar {
+            position: absolute;
+            top: 0; left: 0;
+            height: 100vh;
+            width: 300px;
+            background: #f4f7fb;
+            z-index: 1000;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.18);
+            transition: transform 0.3s ease;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        #sidebar.collapsed { transform: translateX(-100%); }
+
+        .sidebar-header {
+            background: #4a90e2;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .sidebar-header h2 {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: bold;
+            flex-grow: 1;
+            text-align: center;
+        }
+
+        #toggle-sidebar {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 8px 12px;
+            margin: -10px -4px -10px -12px;
+            line-height: 1;
+            user-select: none;
+            flex-shrink: 0;
+            border-radius: 0;
+        }
+        #toggle-sidebar:hover { background: rgba(0,0,0,0.15); }
+
+        /* Slim vertical tab when sidebar is collapsed */
+        #sidebar-open-btn {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            transform: translateY(-50%);
+            z-index: 1001;
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 0 6px 6px 0;
+            width: 20px;
+            padding: 24px 4px;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            box-shadow: 2px 0 6px rgba(0,0,0,0.25);
+            display: none;
+            line-height: 1;
+            user-select: none;
+        }
+        #sidebar-open-btn:hover { background: #357abd; }
+
+        /* ── Section cards ───────────────────────────────────────────── */
+        .sidebar-body { padding: 8px 0 16px; flex-grow: 1; }
+
+        .section-block {
+            background: white;
+            border-radius: 8px;
+            margin: 6px 10px;
+            padding: 8px 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .section-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #4a90e2;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 6px;
+        }
+
+        /* ── Buttons inside sidebar ──────────────────────────────────── */
+        .sb-btn {
+            padding: 5px 14px;
+            background-color: #4a90e2;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .sb-btn:hover { background-color: #357abd; }
+        .sb-btn:active { transform: scale(0.97); }
+
+        /* ── Inputs ──────────────────────────────────────────────────── */
+        input[type="date"], input[type="text"] {
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+            background: #f9f9f9;
+            width: 100%;
+        }
+        input[type="date"]:focus, input[type="text"]:focus {
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 2px rgba(74,144,226,0.2);
+            outline: none;
+        }
+
+        #year-input {
+            width: 80px;
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+            background: #f9f9f9;
+        }
+
+        .date-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 5px;
+        }
+        .date-row label {
+            white-space: nowrap;
+            font-size: 12px;
+            font-weight: 600;
+            color: #444;
+            width: 38px;
+            flex-shrink: 0;
+        }
+        .btn-row {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            margin-top: 4px;
+        }
+
+        /* ── Tail checkboxes ─────────────────────────────────────────── */
+        .tail-row {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+        .tail-row label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            cursor: pointer;
+        }
+
+        /* ── Radius ──────────────────────────────────────────────────── */
+        .radius-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+        }
+        .radius-row .sb-btn { padding: 2px 10px; font-size: 14px; }
+
+        /* ── Drop count ──────────────────────────────────────────────── */
+        .count-row {
+            text-align: center;
+            font-size: 13px;
+            color: #444;
+        }
+        .count-row span { font-weight: 700; color: #4a90e2; font-size: 15px; }
+
+        #zoom-to-fit { width: 100%; padding: 8px; font-size: 13px; }
+
+        /* ── Map control buttons ─────────────────────────────────────── */
+        #map-controls {
+            position: absolute;
+            top: 10px; left: 10px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            align-items: stretch;
+            transition: left 0.3s ease;
+        }
+        #map-controls.sidebar-open {
+            left: 310px;
+        }
+
+        /* Segmented pill toggle */
+        .seg-toggle {
+            display: flex;
+            background: rgba(0,0,0,0.45);
+            border-radius: 6px;
+            padding: 3px;
+            gap: 0;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            width: 150px;
+        }
+        .seg-toggle button {
+            flex: 1;
+            border: none;
+            background: transparent;
+            color: rgba(255,255,255,0.65);
+            font-size: 12px;
+            font-weight: 600;
+            padding: 5px 0;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s, color 0.2s;
+            white-space: nowrap;
+        }
+        .seg-toggle button.active {
+            background: #4a90e2;
+            color: white;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        }
+        .seg-toggle button:not(.active):hover {
+            color: white;
+        }
+
+        /* Plain action buttons (Save PNG, Export GIF) */
+        .map-ctrl-btn {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            width: 150px;
+            text-align: center;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            transition: background-color 0.2s;
+            white-space: nowrap;
+        }
+        .map-ctrl-btn:hover { background-color: #357abd; }
+        .map-ctrl-btn.active { background-color: #1a5fa8; }
+        .map-ctrl-btn:disabled { background-color: #888; cursor: not-allowed; opacity: 0.5; }
+
+        /* ── GIF progress ────────────────────────────────────────────── */
+        #gif-progress {
+            position: absolute;
+            bottom: 60px;
+            right: 10px;
+            z-index: 1001;
+            background: rgba(0,0,0,0.75);
+            color: white;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            display: none;
+        }
+
+        /* ── Popup ───────────────────────────────────────────────────── */
+        .mapboxgl-popup-content {
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            padding: 10px 14px;
+            min-width: 180px;
+        }
+
+        /* ── Legend ──────────────────────────────────────────────────── */
+        #legend {
+            position: absolute;
+            top: 10px; right: 10px;
+            z-index: 1000;
+            background: white;
+            border-radius: 6px;
+            padding: 8px 12px;
+            box-shadow: 0 0 4px rgba(0,0,0,0.25);
+            font-size: 12px;
+            line-height: 1.9;
+        }
+        .legend-dot {
+            display: inline-block;
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        #debug-box {
+            position: absolute;
+            bottom: 40px; left: 10px;
+            z-index: 2000;
+            background: rgba(0,0,0,0.7);
+            color: #0f0;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            pointer-events: none;
+            line-height: 1.8;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <button id="sidebar-open-btn">MENU</button>
+
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <button id="toggle-sidebar">&#8249;</button>
+            <h2>Dropsonde Map</h2>
+        </div>
+        <div class="sidebar-body">
+
+            <div class="section-block">
+                <div class="section-label">Date Range</div>
+                <div class="date-row">
+                    <label for="start-date">Start</label>
+                    <input type="date" id="start-date" />
+                </div>
+                <div class="date-row">
+                    <label for="end-date">End</label>
+                    <input type="date" id="end-date" />
+                </div>
+                <div class="btn-row">
+                    <button class="sb-btn" id="apply-dates">Apply</button>
+                    <button class="sb-btn" id="reset-dates">Reset</button>
+                </div>
+            </div>
+
+            <div class="section-block">
+                <div class="section-label">Year Shortcuts</div>
+                <div class="date-row" style="justify-content:center; gap:8px;">
+                    <label for="year-input" style="width:auto; font-size:12px; font-weight:600; color:#444;">Year</label>
+                    <input type="number" id="year-input" />
+                </div>
+                <div class="btn-row" style="margin-top:6px;">
+                    <button class="sb-btn" id="cy-btn">CY</button>
+                    <button class="sb-btn" id="fy-btn">FY</button>
+                    <button class="sb-btn" id="hurricane-season-btn">HX</button>
+                </div>
+            </div>
+
+            <div class="section-block">
+                <div class="section-label">Aircraft</div>
+                <div class="tail-row">
+                    <label><input type="checkbox" id="tail-n42rf" checked /> N42RF</label>
+                    <label><input type="checkbox" id="tail-n43rf" checked /> N43RF</label>
+                    <label><input type="checkbox" id="tail-n49rf" checked /> N49RF</label>
+                    <label><input type="checkbox" id="tail-other" checked /> Other</label>
+                </div>
+            </div>
+
+            <div class="section-block">
+                <div class="section-label">Operator</div>
+                <input type="text" id="operator-select" list="operatorOptions" placeholder="All operators" autocomplete="off" />
+                <datalist id="operatorOptions"></datalist>
+            </div>
+
+            <div class="section-block">
+                <div class="section-label">Marker Radius</div>
+                <div class="radius-row">
+                    <button class="sb-btn" id="radius-decrease">−</button>
+                    <span id="radius-value">2</span>
+                    <button class="sb-btn" id="radius-increase">+</button>
+                </div>
+            </div>
+
+            <div class="section-block">
+                <div class="count-row">Drops Displayed: <span id="drop-count">—</span></div>
+            </div>
+
+            <div class="section-block">
+                <button class="sb-btn" id="zoom-to-fit">Zoom to Drops</button>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="map"></div>
+    <div id="debug-box"></div>
+
+    <div id="map-controls" class="sidebar-open">
+        <div class="seg-toggle" id="toggle-basemap">
+            <button id="btn-map" class="active">Map</button>
+            <button id="btn-satellite">Satellite</button>
+        </div>
+        <div class="seg-toggle" id="toggle-projection">
+            <button id="btn-flat" class="active">Mercator</button>
+            <button id="btn-globe">Globe</button>
+        </div>
+        <button class="map-ctrl-btn" id="btn-download">Save PNG</button>
+        <button class="map-ctrl-btn" id="btn-gif" disabled>Export GIF</button>
+    </div>
+
+    <div id="gif-progress">Generating GIF... <span id="gif-pct">0%</span></div>
+    <div id="legend">
+        <div><span class="legend-dot" id="leg-n42"></span>N42RF</div>
+        <div><span class="legend-dot" id="leg-n43"></span>N43RF</div>
+        <div><span class="legend-dot" id="leg-n49"></span>N49RF</div>
+        <div><span class="legend-dot" id="leg-other"></span>Other</div>
+    </div>
+
+    <script>
+        // Load Mapbox token from server (kept out of source control)
+        async function initMap() {
+            const res = await fetch('/api/config');
+            const cfg = await res.json();
+            mapboxgl.accessToken = cfg.mapbox_token;
+            startApp();
+        }
+        initMap();
+        function startApp() {
+
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/outdoors-v12',
+            center: [-82.02, 27.988],
+            zoom: 3,
+            projection: 'mercator',
+            preserveDrawingBuffer: true
+        });
+
+        map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
+
+        // ── State ─────────────────────────────────────────────────────────────
+        let markerRadius = 2;
+        const minRadius  = 1;
+        const maxRadius  = 12;
+        let isGlobe      = false;
+        let currentStyle = 'map';
+        let allDropData  = [];
+
+        const STYLES = {
+            'map':       'mapbox://styles/mapbox/outdoors-v12',
+            'satellite': 'mapbox://styles/mapbox/satellite-v9'
+        };
+
+        const TAIL_COLORS_LIGHT = {
+            'N42RF': '#008751',
+            'N43RF': '#d63384',
+            'N49RF': '#2862A5',
+            'OTHER': '#222222'
+        };
+        const TAIL_COLORS_DARK = {
+            'N42RF': '#3CB371',
+            'N43RF': '#d63384',
+            'N49RF': '#1E90FF',
+            'OTHER': '#aaaaaa'
+        };
+        function getTailColors() {
+            return currentBasemap === 'satellite' ? TAIL_COLORS_DARK : TAIL_COLORS_LIGHT;
+        }
+        function updateLegend() {
+            const c = getTailColors();
+            document.getElementById('leg-n42').style.background   = c['N42RF'];
+            document.getElementById('leg-n43').style.background   = c['N43RF'];
+            document.getElementById('leg-n49').style.background   = c['N49RF'];
+            document.getElementById('leg-other').style.background = c['OTHER'];
+        }
+
+        // ── Sidebar ───────────────────────────────────────────────────────────
+        const sidebar       = document.getElementById('sidebar');
+        const openBtn       = document.getElementById('sidebar-open-btn');
+        const SIDEBAR_WIDTH = 300;
+
+        function isSidebarOpen() { return !sidebar.classList.contains('collapsed'); }
+
+        function setSidebarOpen(open) {
+            sidebar.classList.toggle('collapsed', !open);
+            openBtn.style.display = open ? 'none' : 'block';
+        }
+
+        document.getElementById('toggle-sidebar').addEventListener('click', () => {
+            setSidebarOpen(false);
+            document.getElementById('map-controls').classList.remove('sidebar-open');
+            setTimeout(zoomToDrops, 320);
+        });
+        openBtn.addEventListener('click', () => {
+            setSidebarOpen(true);
+            document.getElementById('map-controls').classList.add('sidebar-open');
+            setTimeout(zoomToDrops, 320);
+        });
+
+        // ── Inputs ────────────────────────────────────────────────────────────
+        const startInput = document.getElementById('start-date');
+        const endInput   = document.getElementById('end-date');
+        const yearInput  = document.getElementById('year-input');
+
+        startInput.value = '1996-06-08';
+        endInput.value   = new Date().toISOString().split('T')[0];
+        yearInput.value  = new Date().getFullYear();
+
+        // ── Operators ─────────────────────────────────────────────────────────
+        fetch('/api/operators')
+            .then(r => r.json())
+            .then(data => {
+                const dl = document.getElementById('operatorOptions');
+                data.forEach(op => {
+                    const opt = document.createElement('option');
+                    opt.value = op;
+                    dl.appendChild(opt);
+                });
+            });
+
+        // ── Tails ─────────────────────────────────────────────────────────────
+        const tailCheckboxes = {
+            'N42RF': document.getElementById('tail-n42rf'),
+            'N43RF': document.getElementById('tail-n43rf'),
+            'N49RF': document.getElementById('tail-n49rf'),
+            'Other': document.getElementById('tail-other')
+        };
+        function getSelectedTails() {
+            return Object.keys(tailCheckboxes).filter(t => tailCheckboxes[t].checked);
+        }
+
+        // ── Radius ────────────────────────────────────────────────────────────
+        document.getElementById('radius-increase').addEventListener('click', () => {
+            if (markerRadius < maxRadius) {
+                markerRadius++;
+                document.getElementById('radius-value').textContent = markerRadius;
+                if (map.getLayer('drops-layer'))
+                    map.setPaintProperty('drops-layer', 'circle-radius', markerRadius);
+            }
+        });
+        document.getElementById('radius-decrease').addEventListener('click', () => {
+            if (markerRadius > minRadius) {
+                markerRadius--;
+                document.getElementById('radius-value').textContent = markerRadius;
+                if (map.getLayer('drops-layer'))
+                    map.setPaintProperty('drops-layer', 'circle-radius', markerRadius);
+            }
+        });
+
+        // ── GeoJSON ───────────────────────────────────────────────────────────
+        function buildGeoJSON(data) {
+            const selectedTails = getSelectedTails();
+            const features = [];
+            data.forEach(d => {
+                let lat = d.lat, lon = d.lon;
+                if (lon > 110) lon -= 360;
+                if ((lat === 0 && lon === 0) || isNaN(lat) || isNaN(lon)) return;
+                const tail    = (d.tail || '').trim().toUpperCase();
+                const isKnown = ['N42RF', 'N43RF', 'N49RF'].includes(tail);
+                if (selectedTails.includes(tail) || (selectedTails.includes('Other') && !isKnown)) {
+                    features.push({
+                        type: 'Feature',
+                        geometry: { type: 'Point', coordinates: [lon, lat] },
+                        properties: { uid: d.uid, tail, color: getTailColors()[tail] || getTailColors()['OTHER'] }
+                    });
+                }
+            });
+            return { type: 'FeatureCollection', features };
+        }
+
+        let clickHandlerRegistered = false;
+
+        function addOrUpdateSource(geojson) {
+            cachedGeoJSON = geojson;
+            if (map.getSource('drops')) {
+                map.getSource('drops').setData(geojson);
+            } else {
+                map.addSource('drops', { type: 'geojson', data: geojson });
+                map.addLayer({
+                    id: 'drops-layer',
+                    type: 'circle',
+                    source: 'drops',
+                    paint: {
+                        'circle-radius': markerRadius,
+                        'circle-color': ['get', 'color'],
+                        'circle-opacity': 1,
+                        'circle-stroke-width': 0
+                    }
+                });
+            }
+
+            if (!clickHandlerRegistered) {
+                clickHandlerRegistered = true;
+                map.on('click', 'drops-layer', e => {
+                    const props  = e.features[0].properties;
+                    const coords = e.features[0].geometry.coordinates.slice();
+                    const uid    = props.uid;
+                    const tail   = props.tail;
+
+                    const popup = new mapboxgl.Popup()
+                        .setLngLat(coords)
+                        .setHTML('<i>Loading...</i>')
+                        .addTo(map);
+
+                    if (uid && uid !== 'null') {
+                        fetch(`/api/drops/${uid}`)
+                            .then(r => r.json())
+                            .then(d => popup.setHTML(`
+                                <b>Tail:</b> ${tail}<br>
+                                <b>Operator:</b> ${d.operator || 'N/A'}<br>
+                                <b>Serial:</b> ${d.serial || 'N/A'}<br>
+                                <b>Time:</b> ${d.droptime || 'N/A'}<br>
+                                <b>Lat:</b> ${coords[1].toFixed(5)}<br>
+                                <b>Lon:</b> ${coords[0].toFixed(5)}
+                            `))
+                            .catch(() => popup.setHTML('Failed to load details.'));
+                    } else {
+                        popup.setHTML(`<b>Tail:</b> ${tail}<br><b>Lat:</b> ${coords[1].toFixed(5)}<br><b>Lon:</b> ${coords[0].toFixed(5)}`);
+                    }
+                });
+
+                map.on('mouseenter', 'drops-layer', () => map.getCanvas().style.cursor = 'pointer');
+                map.on('mouseleave', 'drops-layer', () => map.getCanvas().style.cursor = '');
+            }
+        }
+
+        function redrawDrops(data) {
+            if (!map.isStyleLoaded()) return;
+            const geojson = buildGeoJSON(data);
+            addOrUpdateSource(geojson);
+            document.getElementById('drop-count').textContent = geojson.features.length.toLocaleString();
+        }
+
+        // ── Fetch ─────────────────────────────────────────────────────────────
+        function fetchAndDisplayDrops() {
+            const start    = startInput.value;
+            const end      = endInput.value;
+            const operator = document.getElementById('operator-select').value;
+            fetch(`/api/drops/map?start=${start}&end=${end}&operator=${operator}`)
+                .then(r => r.json())
+                .then(data => {
+                    allDropData = data;
+                    redrawDrops(data);
+                    zoomToDrops();
+                })
+                .catch(err => console.error('Error loading drops:', err));
+        }
+
+        // ── Zoom (sidebar-aware) ──────────────────────────────────────────────
+        const DEFAULT_CENTER = [-82.02, 27.988];
+        const DEFAULT_ZOOM = 3;
+
+        function updateZoomBtn() {
+            document.getElementById('zoom-to-fit').textContent = 'Zoom to Drops';
+        }
+
+        function zoomToDrops() {
+            if (isGlobe) {
+                const geojson = cachedGeoJSON || buildGeoJSON(allDropData);
+                if (!geojson || !geojson.features.length) {
+                    map.flyTo({ center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM, duration: 800 });
+                    return;
+                }
+                // Fly to centroid of filtered points
+                let sumLon = 0, sumLat = 0;
+                geojson.features.forEach(f => {
+                    sumLon += f.geometry.coordinates[0];
+                    sumLat += f.geometry.coordinates[1];
+                });
+                const n = geojson.features.length;
+                map.flyTo({ center: [sumLon / n, sumLat / n], zoom: DEFAULT_ZOOM, duration: 800 });
+                return;
+            }
+            if (!allDropData.length) return;
+            const geojson = cachedGeoJSON || buildGeoJSON(allDropData);
+            if (!geojson.features.length) return;
+            let minLon = Infinity, maxLon = -Infinity;
+            let minLat = Infinity, maxLat = -Infinity;
+            geojson.features.forEach(f => {
+                const [lon, lat] = f.geometry.coordinates;
+                if (lon < minLon) minLon = lon;
+                if (lon > maxLon) maxLon = lon;
+                if (lat < minLat) minLat = lat;
+                if (lat > maxLat) maxLat = lat;
+            });
+            if (!isFinite(minLon)) return;
+            const leftPad = isSidebarOpen() ? SIDEBAR_WIDTH + 40 : 40;
+            map.fitBounds(
+                [[minLon, minLat], [maxLon, maxLat]],
+                { padding: { top: 40, bottom: 40, left: leftPad, right: 40 }, duration: 800 }
+            );
+        }
+
+        // ── Smart filename ────────────────────────────────────────────────────
+        function getTimeframePart() {
+            const start = startInput.value;
+            const end   = endInput.value;
+            const today = new Date().toISOString().split('T')[0];
+            const [sy, sm, sd] = start.split('-').map(Number);
+            const [ey, em, ed] = end.split('-').map(Number);
+            if (start === '1996-06-08' && end === today) return 'all';
+            if (sm === 1  && sd === 1  && em === 12 && ed === 31 && sy === ey)      return `CY${ey}`;
+            if (sm === 10 && sd === 1  && em === 9  && ed === 30 && ey === sy + 1)  return `FY${ey}`;
+            if (sm === 6  && sd === 1  && em === 11 && ed === 30 && sy === ey)      return `HX${ey}`;
+            return `${start}_to_${end}`;
+        }
+
+        function getExportFilename() {
+            const operator  = document.getElementById('operator-select').value.trim();
+            const today     = new Date().toISOString().split('T')[0];
+            const satPart   = currentBasemap === 'satellite' ? '_sat' : '';
+            const globePart = isGlobe     ? '_globe' : '';
+            const opPart    = operator    ? `_${operator.replace(/\s+/g, '_')}` : '';
+            // dropsonde_map(_sat)(_globe)_timeframe(_operator)_date.png
+            return `dropsonde_map${satPart}${globePart}_${getTimeframePart()}${opPart}_${today}.png`;
+        }
+
+        function getGIFFilename() {
+            const operator = document.getElementById('operator-select').value.trim();
+            const today    = new Date().toISOString().split('T')[0];
+            const satPart  = currentBasemap === 'satellite' ? '_sat' : '';
+            const opPart   = operator    ? `_${operator.replace(/\s+/g, '_')}` : '';
+            // dropsonde_map(_sat)_timeframe(_operator)_date.gif
+            return `dropsonde_map${satPart}_${getTimeframePart()}${opPart}_${today}.gif`;
+        }
+
+        // ── Basemap & toggles ─────────────────────────────────────────────────
+        let currentBasemap = 'map';
+
+        // Cache the last built GeoJSON so we can reliably restore after style swap
+        let cachedGeoJSON = null;
+
+        function setStyle(styleName) {
+            currentStyle = styleName;
+            if (allDropData.length > 0) cachedGeoJSON = buildGeoJSON(allDropData);
+            map.setStyle(STYLES[styleName]);
+        }
+
+        // Single persistent listener — fires on initial load and every style swap
+        map.on('style.load', () => {
+            // Restore projection after style swap
+            map.setProjection(isGlobe ? 'globe' : 'mercator');
+            // Set fog for globe background — works on all styles
+            map.setFog({
+                'color': 'rgb(180, 210, 240)',      // soft horizon haze
+                'high-color': 'rgb(30, 50, 100)',   // dark blue upper atmosphere
+                'horizon-blend': 0.02,              // very subtle blend
+                'space-color': 'rgb(5, 10, 30)',    // near-black space
+                'star-intensity': 0.5
+            });
+            // Hide all labels and admin/country boundaries on all styles
+            map.getStyle().layers.forEach(layer => {
+                if (layer.type === 'symbol') {
+                    map.setLayoutProperty(layer.id, 'visibility', 'none');
+                }
+                if (layer.type === 'line' && layer.id.match(/border|boundary|admin/i)) {
+                    map.setLayoutProperty(layer.id, 'visibility', 'none');
+                }
+            });
+            // Rebuild drops with correct colors for this style
+            if (allDropData.length > 0) {
+                cachedGeoJSON = buildGeoJSON(allDropData);
+            }
+            updateLegend();
+            if (cachedGeoJSON) {
+                map.addSource('drops', { type: 'geojson', data: cachedGeoJSON });
+                map.addLayer({
+                    id: 'drops-layer',
+                    type: 'circle',
+                    source: 'drops',
+                    paint: {
+                        'circle-radius': markerRadius,
+                        'circle-color': ['get', 'color'],
+                        'circle-opacity': 1,
+                        'circle-stroke-width': 0
+                    }
+                });
+                document.getElementById('drop-count').textContent = cachedGeoJSON.features.length.toLocaleString();
+            }
+        });
+
+        // Basemap segmented toggle — three way: light / map / satellite
+        function setBasemap(name) {
+            if (name === currentBasemap) return; // already on this style, do nothing
+            currentBasemap = name;
+            ['btn-map', 'btn-satellite'].forEach(id => {
+                document.getElementById(id).classList.remove('active');
+            });
+            document.getElementById('btn-' + name).classList.add('active');
+            setStyle(name);
+        }
+        document.getElementById('btn-map').addEventListener('click',       e => { e.stopPropagation(); setBasemap(currentBasemap === 'map' ? 'satellite' : 'map'); });
+        document.getElementById('btn-satellite').addEventListener('click', e => { e.stopPropagation(); setBasemap(currentBasemap === 'map' ? 'satellite' : 'map'); });
+        document.getElementById('toggle-basemap').addEventListener('click', () => {
+            setBasemap(currentBasemap === 'map' ? 'satellite' : 'map');
+        });
+
+        // Projection segmented toggle
+        function setProjection(globe) {
+            isGlobe = globe;
+            map.setProjection(globe ? 'globe' : 'mercator');
+            document.getElementById('btn-flat').classList.toggle('active', !globe);
+            document.getElementById('btn-globe').classList.toggle('active', globe);
+            document.getElementById('btn-gif').disabled = !globe;
+            updateZoomBtn();
+            if (globe) {
+                // Globe diameter in Mapbox = 512 * 2^zoom CSS px
+                // zoom = log2(minDim / 512), subtract small padding offset
+                const dpr    = window.devicePixelRatio || 1;
+                const cssW   = map.getCanvas().width  / dpr;
+                const cssH   = map.getCanvas().height / dpr;
+                const zoom   = Math.log2(Math.min(cssW, cssH) / 512) + 1.85;
+                map.easeTo({ zoom, duration: 600 });
+            }
+        }
+        document.getElementById('btn-flat').addEventListener('click', e => { e.stopPropagation(); setProjection(!isGlobe); });
+        document.getElementById('btn-globe').addEventListener('click', e => { e.stopPropagation(); setProjection(!isGlobe); });
+        document.getElementById('toggle-projection').addEventListener('click', () => setProjection(!isGlobe));
+
+        // ── PNG download ──────────────────────────────────────────────────────
+        document.getElementById('btn-download').addEventListener('click', () => {
+            map.once('render', () => {
+                const srcCanvas = map.getCanvas();
+                let dataURL;
+
+                if (isSidebarOpen()) {
+                    // Crop out the sidebar — only capture the visible map area
+                    const cropX    = SIDEBAR_WIDTH;
+                    const cropW    = srcCanvas.width - cropX;
+                    const cropH    = srcCanvas.height;
+                    const tmpCanvas = document.createElement('canvas');
+                    tmpCanvas.width  = cropW;
+                    tmpCanvas.height = cropH;
+                    tmpCanvas.getContext('2d').drawImage(
+                        srcCanvas,
+                        cropX, 0, cropW, cropH,   // source rect
+                        0,     0, cropW, cropH    // dest rect
+                    );
+                    dataURL = tmpCanvas.toDataURL('image/png');
+                } else {
+                    dataURL = srcCanvas.toDataURL('image/png');
+                }
+
+                const link = document.createElement('a');
+                link.download = getExportFilename();
+                link.href = dataURL;
+                link.click();
+            });
+            map.triggerRepaint();
+        });
+
+        // ── Zoom to fit ───────────────────────────────────────────────────────
+        document.getElementById('zoom-to-fit').addEventListener('click', zoomToDrops);
+
+        // ── Listeners ────────────────────────────────────────────────────────
+        document.getElementById('apply-dates').addEventListener('click', fetchAndDisplayDrops);
+
+        document.getElementById('reset-dates').addEventListener('click', () => {
+            startInput.value = '1996-06-08';
+            endInput.value   = new Date().toISOString().split('T')[0];
+            fetchAndDisplayDrops();
+        });
+
+        document.getElementById('operator-select').addEventListener('change', fetchAndDisplayDrops);
+
+        Object.values(tailCheckboxes).forEach(cb =>
+            cb.addEventListener('change', () => redrawDrops(allDropData))
+        );
+
+        document.getElementById('cy-btn').addEventListener('click', () => {
+            const y = yearInput.value;
+            startInput.value = `${y}-01-01`;
+            endInput.value   = `${y}-12-31`;
+            fetchAndDisplayDrops();
+        });
+
+        document.getElementById('fy-btn').addEventListener('click', () => {
+            const y = parseInt(yearInput.value);
+            startInput.value = `${y - 1}-10-01`;
+            endInput.value   = `${y}-09-30`;
+            fetchAndDisplayDrops();
+        });
+
+        document.getElementById('hurricane-season-btn').addEventListener('click', () => {
+            const y = yearInput.value;
+            startInput.value = `${y}-06-01`;
+            endInput.value   = `${y}-11-30`;
+            fetchAndDisplayDrops();
+        });
+
+
+        // ── Pure JS GIF encoder (no deps, no workers) ───────────────────────
+        async function buildGIF(frames, width, height, delayCs, onProgress) {
+            const bytes = [];
+            const w16 = n => { bytes.push(n & 0xFF, (n >> 8) & 0xFF); };
+            const pushBytes = arr => arr.forEach(b => bytes.push(b));
+            const pushStr = s => { for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i)); };
+
+            function quantize(rgba) {
+                const pixels = width * height;
+                const indices = new Uint8Array(pixels);
+                const pal = new Uint8Array(256 * 3);
+                const colorMap = new Map();
+                let nextIdx = 0;
+                for (let i = 0; i < pixels; i++) {
+                    const r = rgba[i*4]   & 0xF0;
+                    const g = rgba[i*4+1] & 0xF0;
+                    const b = rgba[i*4+2] & 0xF0;
+                    const key = (r << 16) | (g << 8) | b;
+                    let idx = colorMap.get(key);
+                    if (idx === undefined) {
+                        if (nextIdx >= 255) {
+                            let best = 0, bestD = Infinity;
+                            colorMap.forEach((ci, ck) => {
+                                const cr = (ck >> 16) & 0xFF, cg = (ck >> 8) & 0xFF, cb = ck & 0xFF;
+                                const d = (r-cr)**2 + (g-cg)**2 + (b-cb)**2;
+                                if (d < bestD) { bestD = d; best = ci; }
+                            });
+                            idx = best;
+                        } else {
+                            idx = nextIdx++;
+                            colorMap.set(key, idx);
+                            pal[idx*3] = r; pal[idx*3+1] = g; pal[idx*3+2] = b;
+                        }
+                    }
+                    colorMap.set(key, idx);
+                    indices[i] = idx;
+                }
+                return { pal, indices };
+            }
+
+            function lzw(indices, minBits) {
+                const clear = 1 << minBits, eof = clear + 1;
+                let codeSize = minBits + 1, nextCode = eof + 1;
+                const table = new Map();
+                const out = [];
+                let buf = 0, bufBits = 0;
+                const emit = code => {
+                    buf |= (code << bufBits); bufBits += codeSize;
+                    while (bufBits >= 8) { out.push(buf & 0xFF); buf >>>= 8; bufBits -= 8; }
+                };
+                const reset = () => { table.clear(); codeSize = minBits + 1; nextCode = eof + 1; };
+                emit(clear);
+                let prefix = indices[0];
+                for (let i = 1; i < indices.length; i++) {
+                    const key = prefix * 256 + indices[i];
+                    if (table.has(key)) {
+                        prefix = table.get(key);
+                    } else {
+                        emit(prefix);
+                        if (nextCode <= 4095) {
+                            table.set(key, nextCode++);
+                            if (nextCode > (1 << codeSize) && codeSize < 12) codeSize++;
+                        } else { emit(clear); reset(); }
+                        prefix = indices[i];
+                    }
+                }
+                emit(prefix); emit(eof);
+                if (bufBits > 0) out.push(buf & 0xFF);
+                return out;
+            }
+
+            pushStr('GIF89a');
+            w16(width); w16(height);
+            bytes.push(0x70, 0, 0);
+            pushStr('\x21\xFF\x0BNETSCAPE2.0\x03\x01');
+            w16(0); bytes.push(0x00);
+
+            for (let f = 0; f < frames.length; f++) {
+                const rgba = frames[f];
+                const { pal, indices } = quantize(rgba);
+                bytes.push(0x21, 0xF9, 0x04, 0x00);
+                w16(delayCs);
+                bytes.push(0x00, 0x00);
+                bytes.push(0x2C);
+                w16(0); w16(0); w16(width); w16(height);
+                bytes.push(0x87);
+                pushBytes(pal);
+                for (let i = pal.length; i < 256*3; i++) bytes.push(0);
+                bytes.push(8);
+                const compressed = lzw(indices, 8);
+                for (let i = 0; i < compressed.length; i += 255) {
+                    const chunk = compressed.slice(i, i + 255);
+                    bytes.push(chunk.length);
+                    pushBytes(chunk);
+                }
+                bytes.push(0x00);
+                if (onProgress) onProgress(f + 1, frames.length);
+                await new Promise(r => setTimeout(r, 0)); // yield to UI
+            }
+            bytes.push(0x3B);
+            return new Uint8Array(bytes);
+        }
+
+        // ── GIF export ────────────────────────────────────────────────────────
+        document.getElementById('btn-gif').addEventListener('click', async () => {
+            const btn      = document.getElementById('btn-gif');
+            const progress = document.getElementById('gif-progress');
+            const pct      = document.getElementById('gif-pct');
+
+            const wasGlobe = isGlobe;
+            if (!isGlobe) {
+                setProjection(true);
+                await new Promise(r => setTimeout(r, 1000));
+            }
+
+            const startLon  = map.getCenter().lng;
+            const lat       = map.getCenter().lat;
+            const startZoom = map.getZoom();
+            btn.disabled = true;
+            btn.textContent = 'Capturing...';
+            progress.style.display = 'block';
+
+            // Globe fills the canvas height — crop a square tightly around it
+            const srcCanvas = map.getCanvas();
+            const srcW = srcCanvas.width;
+            const srcH = srcCanvas.height;
+
+            // Use Mapbox's project() to find the true pixel radius of the globe,
+            // regardless of window/screen resolution. Project the equator at the
+            // center longitude vs the near-pole to get the actual rendered radius.
+            // Scale by devicePixelRatio since canvas is higher res than CSS pixels.
+            // Use the shorter canvas dimension as the crop size — globe fills height at zoom 1.5
+            const cropSize = Math.min(srcW, srcH);
+            const cropX    = Math.round((srcW - cropSize) / 2);
+            const cropY    = Math.round((srcH - cropSize) / 2);
+
+            const gWidth  = cropSize;
+            const gHeight = cropSize;
+            const tmp = document.createElement('canvas');
+            tmp.width = gWidth; tmp.height = gHeight;
+            const ctx = tmp.getContext('2d');
+
+            const totalFrames = 36;
+            const frameData   = [];
+
+            for (let i = 0; i < totalFrames; i++) {
+                const lon = startLon + (360 / totalFrames) * i;
+                await new Promise(resolve => {
+                    map.once('idle', resolve);
+                    map.jumpTo({ center: [lon, lat], zoom: map.getZoom() });
+                });
+                await new Promise(r => setTimeout(r, 80));
+                map.triggerRepaint();
+                await new Promise(r => setTimeout(r, 80));
+                ctx.clearRect(0, 0, gWidth, gHeight);
+                // Crop source canvas to the globe bounding square
+                ctx.drawImage(srcCanvas, cropX, cropY, cropSize, cropSize, 0, 0, gWidth, gHeight);
+                frameData.push(new Uint8Array(ctx.getImageData(0, 0, gWidth, gHeight).data));
+                pct.textContent = Math.round((i + 1) / totalFrames * 75) + '%';
+                await new Promise(r => setTimeout(r, 0));
+            }
+
+            btn.textContent = 'Encoding...';
+            pct.textContent = '75%';
+            await new Promise(r => setTimeout(r, 30));
+
+            const gifBytes = await buildGIF(frameData, gWidth, gHeight, 8, (done, total) => {
+                pct.textContent = Math.round(75 + (done / total) * 25) + '%';
+            });
+            pct.textContent = '100%';
+
+            const blob = new Blob([gifBytes], { type: 'image/gif' });
+            const link = document.createElement('a');
+            link.download = getGIFFilename();
+            link.href = URL.createObjectURL(blob);
+            link.click();
+
+            btn.disabled = false;
+            btn.textContent = 'Export GIF';
+            progress.style.display = 'none';
+            pct.textContent = '0%';
+
+            map.jumpTo({ center: [startLon, lat], zoom: startZoom });
+            if (!wasGlobe) {
+                setProjection(false);
+            }
+        });
+
+                // ── Debug overlay (press D to toggle) ─────────────────────────────────
+        const debugBox = document.getElementById('debug-box');
+        let debugEnabled = false;
+        function updateDebug() {
+            if (!debugEnabled) return;
+            const z = map.getZoom().toFixed(3);
+            const dpr = (window.devicePixelRatio || 1).toFixed(1);
+            const cssW = (map.getCanvas().width / (window.devicePixelRatio||1)).toFixed(0);
+            const cssH = (map.getCanvas().height / (window.devicePixelRatio||1)).toFixed(0);
+            const calcZoom = (Math.log2(Math.min(cssW, cssH) / 512) + 1.85).toFixed(3);
+            debugBox.innerHTML = 'zoom: <b style="color:#ff0">' + z + '</b><br>canvas: ' + cssW + ' × ' + cssH + ' css px<br>dpr: ' + dpr + '<br>auto-zoom target: ' + calcZoom;
+        }
+        document.addEventListener('keydown', e => {
+            if (e.key === 'd' || e.key === 'D') {
+                debugEnabled = !debugEnabled;
+                debugBox.style.display = debugEnabled ? 'block' : 'none';
+                updateDebug();
+            }
+        });
+        map.on('zoom', updateDebug);
+        map.on('move', updateDebug);
+
+                // ── Initial load ──────────────────────────────────────────────────────
+        map.on('load', () => fetchAndDisplayDrops());
+        } // end startApp
+    </script>
+</body>
+</html>
