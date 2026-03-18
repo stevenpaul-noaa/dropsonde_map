@@ -1,4 +1,8 @@
-from fastapi import FastAPI, Query, HTTPException
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, Query, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, text, func, extract
@@ -10,10 +14,12 @@ import csv
 import io
 
 # ── Database setup ────────────────────────────────────────────────────────────
-DATABASE_URL = "sqlite:///instance/dropsonde.db"
-# DATABASE_URL = "postgresql://postgres:ncar@localhost:5432/dropsonde_db"
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///instance/dropsonde.db')
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+)
 Base = declarative_base()
 
 class Dropsonde(Base):
@@ -61,8 +67,6 @@ def get_db():
     finally:
         db.close()
 
-from fastapi import Depends
-
 def apply_filters(query, db, start, end, operator, tail):
     if start:
         query = query.filter(Dropsonde.droptime >= datetime.combine(start, datetime.min.time()))
@@ -73,6 +77,11 @@ def apply_filters(query, db, start, end, operator, tail):
     if tail:
         query = query.filter(Dropsonde.tail == tail)
     return query
+
+# ── Config endpoint (serves Mapbox token to frontend) ─────────────────────────
+@app.get("/api/config")
+def config():
+    return {"mapbox_token": os.getenv("MAPBOX_TOKEN", "")}
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -89,6 +98,38 @@ def get_drops_map(
     query = apply_filters(query, db, start, end, operator, tail)
     rows = query.all()
     return [DropMap(uid=r.uid, lat=r.lat, lon=r.lon, tail=r.tail) for r in rows]
+
+
+# NOTE: /api/drops/export must be defined BEFORE /api/drops/{uid}
+@app.get("/api/drops/export")
+def export_drops(
+    start:    Optional[date] = None,
+    end:      Optional[date] = None,
+    operator: Optional[str]  = None,
+    tail:     Optional[str]  = None,
+    db:       Session        = Depends(get_db)
+):
+    """Export filtered drops as a CSV file download."""
+    query = db.query(Dropsonde)
+    query = apply_filters(query, db, start, end, operator, tail)
+    drops = query.all()
+
+    def generate():
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["uid", "tail", "operator", "droptime", "lat", "lon", "serial"])
+        for d in drops:
+            writer.writerow([d.uid, d.tail, d.operator, d.droptime, d.lat, d.lon, d.serial])
+            yield output.getvalue()
+            output.seek(0)
+            output.truncate(0)
+
+    filename = f"dropsonde_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @app.get("/api/drops/{uid}", response_model=DropDetail)
@@ -108,7 +149,6 @@ def get_drops(
     tail:     Optional[str]  = None,
     db:       Session        = Depends(get_db)
 ):
-    """Full drop data with all fields, supports same filters as /api/drops/map."""
     query = db.query(Dropsonde)
     query = apply_filters(query, db, start, end, operator, tail)
     return query.all()
@@ -116,7 +156,6 @@ def get_drops(
 
 @app.get("/api/operators")
 def get_operators(db: Session = Depends(get_db)):
-    """Distinct operator names for the filter dropdown."""
     rows = (
         db.query(Dropsonde.operator)
         .filter(Dropsonde.operator.isnot(None), Dropsonde.operator != "")
@@ -129,7 +168,6 @@ def get_operators(db: Session = Depends(get_db)):
 
 @app.get("/api/stats")
 def get_stats(db: Session = Depends(get_db)):
-    """Drop counts grouped by year and tail number."""
     rows = (
         db.query(
             extract("year", Dropsonde.droptime).label("year"),
@@ -150,7 +188,6 @@ def get_missions(
     tail:     Optional[str]  = None,
     db:       Session        = Depends(get_db)
 ):
-    """Groups drops by flight (same tail + same date), returns drop count per mission."""
     query = db.query(
         func.date(Dropsonde.droptime).label("mission_date"),
         Dropsonde.tail,
@@ -181,37 +218,6 @@ def get_missions(
         }
         for r in rows
     ]
-
-
-@app.get("/api/drops/export")
-def export_drops(
-    start:    Optional[date] = None,
-    end:      Optional[date] = None,
-    operator: Optional[str]  = None,
-    tail:     Optional[str]  = None,
-    db:       Session        = Depends(get_db)
-):
-    """Export filtered drops as a CSV file download."""
-    query = db.query(Dropsonde)
-    query = apply_filters(query, db, start, end, operator, tail)
-    drops = query.all()
-
-    def generate():
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["uid", "tail", "operator", "droptime", "lat", "lon", "serial"])
-        for d in drops:
-            writer.writerow([d.uid, d.tail, d.operator, d.droptime, d.lat, d.lon, d.serial])
-            yield output.getvalue()
-            output.seek(0)
-            output.truncate(0)
-
-    filename = f"dropsonde_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    return StreamingResponse(
-        generate(),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
 
 
 # ── Static files / frontend ───────────────────────────────────────────────────
