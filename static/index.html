@@ -467,9 +467,10 @@
         map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
 
         // ── State ─────────────────────────────────────────────────────────────
-        let markerRadius = 2;
-        const minRadius  = 1;
-        const maxRadius  = 12;
+        let radiusOffset = 0;   // user adjustment on top of auto-size
+        const minOffset  = -4;
+        const maxOffset  = 8;
+        const radiusStep = 0.5;
         let isGlobe      = false;
         let currentStyle = 'map';
         let allDropData  = [];
@@ -558,22 +559,32 @@
         }
 
         // ── Radius ────────────────────────────────────────────────────────────
+        // Auto-size expression: small at low zoom, grows as you zoom in
+        function autoRadiusExpression(offset) {
+            return [
+                'interpolate', ['linear'], ['zoom'],
+                2,  Math.max(1, 1.5 + offset),
+                5,  Math.max(1, 2.5 + offset),
+                8,  Math.max(1, 4.5 + offset),
+                12, Math.max(1, 7.5 + offset)
+            ];
+        }
+        function updateRadiusDisplay() {
+            const sign = radiusOffset > 0 ? '+' : '';
+            document.getElementById('radius-value').textContent = radiusOffset === 0 ? 'auto' : sign + radiusOffset.toFixed(1);
+        }
+        function applyRadius() {
+            updateRadiusDisplay();
+            if (map.getLayer('drops-layer'))
+                map.setPaintProperty('drops-layer', 'circle-radius', autoRadiusExpression(radiusOffset));
+        }
         document.getElementById('radius-increase').addEventListener('click', () => {
-            if (markerRadius < maxRadius) {
-                markerRadius++;
-                document.getElementById('radius-value').textContent = markerRadius;
-                if (map.getLayer('drops-layer'))
-                    map.setPaintProperty('drops-layer', 'circle-radius', markerRadius);
-            }
+            if (radiusOffset < maxOffset) { radiusOffset = Math.round((radiusOffset + radiusStep) * 10) / 10; applyRadius(); }
         });
         document.getElementById('radius-decrease').addEventListener('click', () => {
-            if (markerRadius > minRadius) {
-                markerRadius--;
-                document.getElementById('radius-value').textContent = markerRadius;
-                if (map.getLayer('drops-layer'))
-                    map.setPaintProperty('drops-layer', 'circle-radius', markerRadius);
-            }
+            if (radiusOffset > minOffset) { radiusOffset = Math.round((radiusOffset - radiusStep) * 10) / 10; applyRadius(); }
         });
+        updateRadiusDisplay();
 
         // ── GeoJSON ───────────────────────────────────────────────────────────
         function buildGeoJSON(data) {
@@ -609,7 +620,7 @@
                     type: 'circle',
                     source: 'drops',
                     paint: {
-                        'circle-radius': markerRadius,
+                        'circle-radius': autoRadiusExpression(radiusOffset),
                         'circle-color': ['get', 'color'],
                         'circle-opacity': 1,
                         'circle-stroke-width': 0
@@ -770,10 +781,10 @@
             map.setProjection(isGlobe ? 'globe' : 'mercator');
             // Set fog for globe background — works on all styles
             map.setFog({
-                'color': 'rgb(180, 210, 240)',      // soft horizon haze
-                'high-color': 'rgb(30, 50, 100)',   // dark blue upper atmosphere
-                'horizon-blend': 0.02,              // very subtle blend
-                'space-color': 'rgb(5, 10, 30)',    // near-black space
+                'color': 'rgb(80, 100, 120)',        // dimmer horizon haze
+                'high-color': 'rgb(15, 25, 50)',     // darker upper atmosphere
+                'horizon-blend': 0.01,               // tighter blend
+                'space-color': 'rgb(5, 10, 30)',     // near-black space
                 'star-intensity': 0.5
             });
             // Hide all labels and admin/country boundaries on all styles
@@ -797,7 +808,7 @@
                     type: 'circle',
                     source: 'drops',
                     paint: {
-                        'circle-radius': markerRadius,
+                        'circle-radius': autoRadiusExpression(radiusOffset),
                         'circle-color': ['get', 'color'],
                         'circle-opacity': 1,
                         'circle-stroke-width': 0
@@ -837,7 +848,7 @@
                 const dpr    = window.devicePixelRatio || 1;
                 const cssW   = map.getCanvas().width  / dpr;
                 const cssH   = map.getCanvas().height / dpr;
-                const zoom   = Math.log2(Math.min(cssW, cssH) / 512) + 1.85;
+                const zoom   = Math.log2(Math.min(cssW, cssH) / 512) + 1.5;
                 map.easeTo({ zoom, duration: 600 });
             }
         }
@@ -846,32 +857,61 @@
         document.getElementById('toggle-projection').addEventListener('click', () => setProjection(!isGlobe));
 
         // ── PNG download ──────────────────────────────────────────────────────
+        function drawLegendOnCanvas(ctx, canvasW, canvasH, dpr) {
+            const colors = getTailColors();
+            const labels = [['N42RF', colors['N42RF']], ['N43RF', colors['N43RF']], ['N49RF', colors['N49RF']], ['Other', colors['OTHER']]];
+            const pad    = 10 * dpr;
+            const dotR   = 5 * dpr;
+            const lineH  = 22 * dpr;
+            const fontSize = 13 * dpr;
+            const boxPad = 10 * dpr;
+
+            // Measure text to auto-size box width
+            ctx.font = `${fontSize}px Arial, sans-serif`;
+            const maxTextW = Math.max(...labels.map(([l]) => ctx.measureText(l).width));
+            const boxW   = boxPad + dotR * 2 + 6 * dpr + maxTextW + boxPad;
+            const boxH   = labels.length * lineH + boxPad * 2;
+            const x      = canvasW - boxW - pad;
+            const y      = pad;
+
+            // Background box
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.beginPath();
+            ctx.roundRect(x, y, boxW, boxH, 6 * dpr);
+            ctx.fill();
+
+            // Entries — each row is lineH tall, centered within it
+            ctx.textBaseline = 'middle';
+            labels.forEach(([label, color], i) => {
+                const cy = y + boxPad + lineH * i + lineH / 2;
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(x + boxPad + dotR, cy, dotR, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#222';
+                ctx.fillText(label, x + boxPad + dotR * 2 + 6 * dpr, cy);
+            });
+        }
+
         document.getElementById('btn-download').addEventListener('click', () => {
             map.once('render', () => {
                 const srcCanvas = map.getCanvas();
-                let dataURL;
+                const dpr = window.devicePixelRatio || 1;
+                const cropX = isSidebarOpen() ? SIDEBAR_WIDTH * dpr : 0;
+                const cropW = srcCanvas.width - cropX;
+                const cropH = srcCanvas.height;
 
-                if (isSidebarOpen()) {
-                    // Crop out the sidebar — only capture the visible map area
-                    const cropX    = SIDEBAR_WIDTH;
-                    const cropW    = srcCanvas.width - cropX;
-                    const cropH    = srcCanvas.height;
-                    const tmpCanvas = document.createElement('canvas');
-                    tmpCanvas.width  = cropW;
-                    tmpCanvas.height = cropH;
-                    tmpCanvas.getContext('2d').drawImage(
-                        srcCanvas,
-                        cropX, 0, cropW, cropH,   // source rect
-                        0,     0, cropW, cropH    // dest rect
-                    );
-                    dataURL = tmpCanvas.toDataURL('image/png');
-                } else {
-                    dataURL = srcCanvas.toDataURL('image/png');
-                }
+                const tmpCanvas = document.createElement('canvas');
+                tmpCanvas.width  = cropW;
+                tmpCanvas.height = cropH;
+                const ctx = tmpCanvas.getContext('2d');
+
+                ctx.drawImage(srcCanvas, cropX, 0, cropW, cropH, 0, 0, cropW, cropH);
+                drawLegendOnCanvas(ctx, cropW, cropH, dpr);
 
                 const link = document.createElement('a');
                 link.download = getExportFilename();
-                link.href = dataURL;
+                link.href = tmpCanvas.toDataURL('image/png');
                 link.click();
             });
             map.triggerRepaint();
@@ -1059,7 +1099,7 @@
             tmp.width = gWidth; tmp.height = gHeight;
             const ctx = tmp.getContext('2d');
 
-            const totalFrames = 36;
+            const totalFrames = 72;
             const frameData   = [];
 
             for (let i = 0; i < totalFrames; i++) {
@@ -1114,7 +1154,7 @@
             const dpr = (window.devicePixelRatio || 1).toFixed(1);
             const cssW = (map.getCanvas().width / (window.devicePixelRatio||1)).toFixed(0);
             const cssH = (map.getCanvas().height / (window.devicePixelRatio||1)).toFixed(0);
-            const calcZoom = (Math.log2(Math.min(cssW, cssH) / 512) + 1.85).toFixed(3);
+            const calcZoom = (Math.log2(Math.min(cssW, cssH) / 512) + 1.5).toFixed(3);
             debugBox.innerHTML = 'zoom: <b style="color:#ff0">' + z + '</b><br>canvas: ' + cssW + ' × ' + cssH + ' css px<br>dpr: ' + dpr + '<br>auto-zoom target: ' + calcZoom;
         }
         document.addEventListener('keydown', e => {
