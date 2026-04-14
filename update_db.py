@@ -3,7 +3,7 @@ import sqlite3
 from datetime import datetime
 
 # === CONFIG ===
-INPUT_FILE = r'G:\Shared drives\OMAO AOC Mission Instrumentation\Instruments & Systems\AVAPS\Software\sonde_counter_tail_nc\counter_all_drops_tail.txt'
+INPUT_FILE = r'G:\Shared drives\OMAO AOC Mission Instrumentation\Instruments & Systems\AVAPS\Software\sonde_counter\counter_all_drops.txt'
 DB_PATH = r'instance/dropsonde.db'
 
 def process_and_update():
