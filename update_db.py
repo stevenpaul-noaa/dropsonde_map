@@ -10,6 +10,18 @@ def process_and_update():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS dropsonde_data (
+            uid TEXT PRIMARY KEY,
+            operator TEXT,
+            serial TEXT,
+            lat REAL,
+            lon REAL,
+            tail TEXT,
+            droptime TEXT
+        )
+    """)
+
     with open(INPUT_FILE, 'r', newline='') as infile:
         reader = csv.reader(infile)
         for row in reader:
@@ -24,7 +36,7 @@ def process_and_update():
             serial = row[5]
             lat = float(row[8])
             lon = float(row[9])
-            tail = row[10].strip()
+            tail = row[10].strip().upper()
 
             cur.execute("""
                 INSERT OR IGNORE INTO dropsonde_data (uid, operator, serial, lat, lon, tail, droptime)

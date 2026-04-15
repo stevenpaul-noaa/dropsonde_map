@@ -24,8 +24,7 @@ Base = declarative_base()
 
 class Dropsonde(Base):
     __tablename__ = "dropsonde_data"
-    id       = Column(Integer, primary_key=True)
-    uid      = Column(String(50), unique=True, nullable=True)
+    uid      = Column(String(50), primary_key=True)
     tail     = Column(String(10), nullable=False)
     operator = Column(String(50), nullable=False)
     droptime = Column(DateTime, nullable=False)
